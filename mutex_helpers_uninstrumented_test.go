@@ -2,8 +2,8 @@
 
 package sync_test
 
-// mutexReset is intended to be called as `defer mutexReset(x)()`
-// to reinitialize the package state at the beginning of any mutex test.
-func mutexReset(drain bool) func() {
-	return func() {}
-}
+// drainMutex continually reads from all mutex-related channels.
+// It's intended to be called once from the test package.
+//
+// Without the isync build tag, this is a no-op.
+func drainMutex() {}

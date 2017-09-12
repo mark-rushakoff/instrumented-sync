@@ -95,6 +95,7 @@ func Drain(w io.Writer) {
 			if cache[e.id] == stat {
 				continue
 			}
+			cache[e.id] = stat
 			s = fmt.Sprintf("Mutex<%d>: %d waiting, %d held\n", e.id, e.waiting, e.held)
 		default:
 			panic(fmt.Sprintf("unknown etype: %d", e.etype))

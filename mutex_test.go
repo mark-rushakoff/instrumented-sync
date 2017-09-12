@@ -41,6 +41,10 @@ import (
 	"github.com/mark-rushakoff/instrumented-sync"
 )
 
+func init() {
+	go drainMutex()
+}
+
 func HammerMutex(m *sync.Mutex, loops int, cdone chan bool) {
 	for i := 0; i < loops; i++ {
 		m.Lock()
@@ -50,7 +54,6 @@ func HammerMutex(m *sync.Mutex, loops int, cdone chan bool) {
 }
 
 func TestMutex(t *testing.T) {
-	defer mutexReset(true)()
 	if n := runtime.SetMutexProfileFraction(1); n != 0 {
 		t.Logf("got mutexrate %d expected 0", n)
 	}
@@ -66,7 +69,6 @@ func TestMutex(t *testing.T) {
 }
 
 func TestMutexFairness(t *testing.T) {
-	defer mutexReset(true)()
 	var mu sync.Mutex
 	stop := make(chan bool)
 	defer close(stop)
@@ -99,7 +101,6 @@ func TestMutexFairness(t *testing.T) {
 }
 
 func BenchmarkMutexUncontended(b *testing.B) {
-	defer mutexReset(true)()
 	type PaddedMutex struct {
 		sync.Mutex
 		pad [128]uint8
@@ -114,7 +115,6 @@ func BenchmarkMutexUncontended(b *testing.B) {
 }
 
 func benchmarkMutex(b *testing.B, slack, work bool) {
-	defer mutexReset(true)()
 	var mu sync.Mutex
 	if slack {
 		b.SetParallelism(10)
@@ -152,7 +152,6 @@ func BenchmarkMutexWorkSlack(b *testing.B) {
 }
 
 func BenchmarkMutexNoSpin(b *testing.B) {
-	defer mutexReset(true)()
 	// This benchmark models a situation where spinning in the mutex should be
 	// non-profitable and allows to confirm that spinning does not do harm.
 	// To achieve this we create excess of goroutines most of which do local work.
@@ -187,7 +186,6 @@ func BenchmarkMutexNoSpin(b *testing.B) {
 }
 
 func BenchmarkMutexSpin(b *testing.B) {
-	defer mutexReset(true)()
 	// This benchmark models a situation where spinning in the mutex should be
 	// profitable. To achieve this we create a goroutine per-proc.
 	// These goroutines access considerable amount of local data so that

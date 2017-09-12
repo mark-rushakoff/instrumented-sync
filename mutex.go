@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 var ReportInterval time.Duration = 25 * time.Millisecond
@@ -57,12 +58,15 @@ type Mutex struct {
 	m sync.Mutex
 
 	// How many attempted locks are in progress.
-	waiting uint32
+	// Heap allocated so we can refer to the value in a goroutine without keeping the Mutex alive.
+	waiting *uint32
 
 	// How many are holding the lock - must always be 0 or 1.
-	held uint32
+	// Heap allocated so we can refer to the value in a goroutine without keeping the Mutex alive.
+	held *uint32
 
 	// Has the mutex ever been used?
+	// Okay to be stack allocated.
 	inUse uint32
 
 	// We need something heap-allocated to ensure we can use runtime.SetFinalizer.
@@ -77,23 +81,33 @@ func (m *Mutex) Lock() {
 		m.onFirstUse()
 	}
 
+	// Ensure that we can use m.waiting, which we're about to increment, for the rest of this function.
+	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.waiting))) == nil {
+		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.waiting)), nil, unsafe.Pointer(new(uint32)))
+	}
+
 	// Indicate that a goroutine is waiting to acquire the lock.
-	atomic.AddUint32(&m.waiting, 1)
+	atomic.AddUint32((*uint32)(m.waiting), 1)
 
 	m.m.Lock()
 
+	// About to use held; it's possible that onFirstUse is on another goroutine and hasn't finished yet,
+	// so ensure it's initialized here.
+	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.held))) == nil {
+		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.held)), nil, unsafe.Pointer(new(uint32)))
+	}
 	// There can only be one hold on the lock.
 	// Indicate the lock is held, now that we've acquired the inner lock.
-	atomic.StoreUint32(&m.held, 1)
+	atomic.StoreUint32(m.held, 1)
 
 	// Decrement the number waiting to hold the lock.
-	atomic.AddUint32(&m.waiting, ^uint32(0))
+	atomic.AddUint32(m.waiting, ^uint32(0))
 }
 
 func (m *Mutex) Unlock() {
 	// Before we unlock the inner mutex, indicate there is no longer a hold on the lock.
 	// This means there is a potential race of seeing m.held == 0 between unlock and immediate relock.
-	atomic.StoreUint32(&m.held, 0)
+	atomic.StoreUint32((m.held), 0)
 	m.m.Unlock()
 }
 
@@ -105,10 +119,15 @@ func (m *Mutex) onFirstUse() {
 
 	done := make(chan struct{})
 
+	// Ensure waiting and held are initialized properly.
+	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.waiting))) == nil {
+		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.waiting)), nil, unsafe.Pointer(new(uint32)))
+	}
+	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.held))) == nil {
+		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.held)), nil, unsafe.Pointer(new(uint32)))
+	}
 	// Reference the stat fields directly so that we do not hold a reference to m.
-	waiting := &m.waiting
-	held := &m.held
-	go reportMutex(done, waiting, held, mid)
+	go reportMutex(done, m.waiting, m.held, mid)
 
 	// Set the finalizer on a value we are sure is heap-allocated.
 	// See the comment for Mutex.live.
