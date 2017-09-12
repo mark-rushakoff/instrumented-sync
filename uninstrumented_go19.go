@@ -2,7 +2,7 @@
 
 package sync
 
-import(
+import (
 	"sync"
 )
 

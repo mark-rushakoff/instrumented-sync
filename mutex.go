@@ -3,7 +3,6 @@
 package sync
 
 import (
-	"fmt"
 	"runtime"
 	"runtime/debug"
 	"sync"
