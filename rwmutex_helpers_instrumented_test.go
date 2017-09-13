@@ -4,19 +4,19 @@ package sync_test
 
 import "github.com/mark-rushakoff/instrumented-sync"
 
-// drainMutex continually reads from all mutex-related channels.
+// drainRWMutex continually reads from all RWMutex-related channels.
 // It's intended to be called once from the test package.
-func drainMutex() {
+func drainRWMutex() {
 	go func() {
-		for range sync.MutexRegistrationOut {
+		for range sync.RWMutexRegistrationOut {
 		}
 	}()
 	go func() {
-		for range sync.MutexStatOut {
+		for range sync.RWMutexStatOut {
 		}
 	}()
 	go func() {
-		for range sync.MutexDeregistrationOut {
+		for range sync.RWMutexDeregistrationOut {
 		}
 	}()
 }

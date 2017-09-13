@@ -11,8 +11,6 @@ import (
 	"unsafe"
 )
 
-var ReportInterval time.Duration = 25 * time.Millisecond
-
 // The buffer size of the mutex stat output.
 // You could vary this with a linker setting.
 var MutexStatOutSize = 4096
@@ -87,7 +85,7 @@ func (m *Mutex) Lock() {
 	}
 
 	// Indicate that a goroutine is waiting to acquire the lock.
-	atomic.AddUint32((*uint32)(m.waiting), 1)
+	atomic.AddUint32(m.waiting, 1)
 
 	m.m.Lock()
 
@@ -107,15 +105,17 @@ func (m *Mutex) Lock() {
 func (m *Mutex) Unlock() {
 	// Before we unlock the inner mutex, indicate there is no longer a hold on the lock.
 	// This means there is a potential race of seeing m.held == 0 between unlock and immediate relock.
-	atomic.StoreUint32((m.held), 0)
+	atomic.StoreUint32(m.held, 0)
 	m.m.Unlock()
 }
 
 var mutexCounter uint64
 
+// onFirstUse ensures all values are initialized correctly, sets up a reporting goroutine,
+// and registers a finalizer to close the reporting goroutine.
 func (m *Mutex) onFirstUse() {
-	mid := atomic.AddUint64(&mutexCounter, 1)
-	MutexRegistrationOut <- MutexRegistration{ID: mid, Stack: debug.Stack()}
+	id := atomic.AddUint64(&mutexCounter, 1)
+	MutexRegistrationOut <- MutexRegistration{ID: id, Stack: debug.Stack()}
 
 	done := make(chan struct{})
 
@@ -127,14 +127,14 @@ func (m *Mutex) onFirstUse() {
 		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.held)), nil, unsafe.Pointer(new(uint32)))
 	}
 	// Reference the stat fields directly so that we do not hold a reference to m.
-	go reportMutex(done, m.waiting, m.held, mid)
+	go reportMutex(done, m.waiting, m.held, id)
 
 	// Set the finalizer on a value we are sure is heap-allocated.
 	// See the comment for Mutex.live.
 	m.live = new(byte)
 	runtime.SetFinalizer(m.live, func(b *byte) {
 		close(done)
-		MutexDeregistrationOut <- mid
+		MutexDeregistrationOut <- id
 	})
 }
 

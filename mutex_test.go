@@ -1,5 +1,5 @@
 // The code in this test file is copied from the Go standard library's
-// mutex sync tests, with slight modifications to account for stat and registration sinks.
+// Mutex tests, with slight modifications to account for stat and registration drains.
 //
 // The original license is as follows:
 
